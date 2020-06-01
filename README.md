@@ -1,5 +1,5 @@
 # Modified code for: Few-shot Object Detection via Feature Reweighting
-Changes were made to allow for training the networks described in the paper below on pytorch 1.5 with python 3.7. Notably:
+Changes were made to allow for training the networks described in the paper below on pytorch 1.4 with python 3.7. Notably:
 1) syntax changes were introduced to ensure that integers are returned on division operations in several locations and 
 2) the initialization procedures for batch normalization as well as convolutional layers were reverted to their state in pytorch 0.3.1. 
 
