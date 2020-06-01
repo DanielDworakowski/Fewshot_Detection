@@ -5,7 +5,7 @@ import numpy as np
 from os import path
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--droot', type=str, default='/home/bykang/voc')
+parser.add_argument('--droot', type=str, default='/datasets/VOC')
 args = parser.parse_args()
 
 args.droot = args.droot.rstrip('/')
@@ -18,11 +18,11 @@ for name_list in sorted(os.listdir(src_folder)):
     # Read from src
     with open(path.join(src_folder, name_list), 'r') as f:
         names = f.readlines()
-    
+
     # Replace data root
-    names = [name.replace('/scratch/bykang/datasets', args.droot) 
+    names = [name.replace('/scratch/bykang/datasets', args.droot)
              for name in names]
-    
+
     with open(path.join(args.droot, 'voclist', name_list), 'w') as f:
         f.writelines(names)
 
@@ -32,7 +32,7 @@ for fname in ['voc_traindict_full.txt',
               'voc_traindict_bbox_2shot.txt',
               'voc_traindict_bbox_3shot.txt',
               'voc_traindict_bbox_5shot.txt',
-              'voc_traindict_bbox_10shot.txt']: 
+              'voc_traindict_bbox_10shot.txt']:
     full_name = path.join('data', fname)
     print('  | On ' + full_name)
     # Read lines
@@ -40,10 +40,11 @@ for fname in ['voc_traindict_full.txt',
         lines = f.readlines()
 
     # Replace data root
-    lines = [line.replace('/scratch/bykang/datasets', args.droot) 
+    lines = [line.replace('/home/bykang/voc', args.droot)
              for line in lines]
 
     # Rewrite linea
+    print(full_name)
     with open(full_name, 'w') as f:
         f.writelines(lines)
 

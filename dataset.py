@@ -13,6 +13,7 @@ from image import *
 from cfg import cfg
 from collections import defaultdict
 import pdb
+import tqdm
 
 def topath(p):
     return p.replace('scratch', 'tmp_scratch/basilisk')
@@ -53,7 +54,7 @@ def is_valid(imgpath, withnovel=True):
             else:
                 # Check whether an image contains base objects only
                 if clsset.isdisjoint(set(cfg.novel_ids)):
-                    return True 
+                    return True
 
     return False
 
@@ -71,7 +72,7 @@ def build_dataset(dataopt):
             return loadlines(dataopt['meta']) * cfg.repeat
         else:
             metalist, metacnt = load_metadict(dataopt['meta'], cfg.repeat)
-            return build_fewset(dataopt['train'], metalist, metacnt, cfg.shot*cfg.repeat) 
+            return build_fewset(dataopt['train'], metalist, metacnt, cfg.shot*cfg.repeat)
 
 
 def load_metadict(metapath, repeat=1):
@@ -156,7 +157,7 @@ def build_fewset(imglist, metalist, metacnt, shot, replace=True):
             names.remove(imgpath)
             continue
 
-        # Add current imagepath to the file lists 
+        # Add current imagepath to the file lists
         for ci in set(bcls):
             metacnt[cfg.classes[ci]] += bcls.count(ci)
         metalist.append(imgpath)
@@ -246,7 +247,7 @@ class listDataset(Dataset):
 
         jitter = 0.2
         hue = 0.1
-        saturation = 1.5 
+        saturation = 1.5
         exposure = 1.5
 
         labpath = listDataset.get_labpath(imgpath)
@@ -398,14 +399,14 @@ class MetaDataset(Dataset):
             mask[:, y1:y2, x1:x2] = 1
 
         if merge:
-            return torch.cat([img, mask]) 
+            return torch.cat([img, mask])
         else:
             return img, mask
 
     def get_metaimg(self, clsid, imgpath):
         jitter = 0.2
         hue = 0.1
-        saturation = 1.5 
+        saturation = 1.5
         exposure = 1.5
 
         if isinstance(imgpath, int):
@@ -448,8 +449,8 @@ class MetaDataset(Dataset):
         newinds = []
         print('===> filtering...')
         _cnt = 0
-        for clsid, metaind in inds:
-            print('|{}/{}'.format(_cnt, len(inds)))
+        for clsid, metaind in tqdm.tqdm(inds):
+            # print('|{}/{}'.format(_cnt, len(inds)))
             _cnt += 1
             img, mask = self.get_metain(clsid, metaind)
             if img is not None:
@@ -468,7 +469,7 @@ class MetaDataset(Dataset):
             return (img, mask, clsid)
         else:
             return (img, mask)
-   
+
     @staticmethod
     def get_labpath(imgpath, cls_name):
         if cfg.data == 'voc':
@@ -525,8 +526,8 @@ if __name__ == '__main__':
     #                    shuffle=True,
     #                    transform=transforms.Compose([
     #                        transforms.ToTensor(),
-    #                    ]), 
-    #                    train=True, 
+    #                    ]),
+    #                    train=True,
     #                    seen=0,
     #                    batch_size=batch_size,
     #                    num_workers=0),

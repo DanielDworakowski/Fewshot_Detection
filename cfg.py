@@ -3,6 +3,7 @@ from utils import convert2cpu
 import numpy as np
 from easydict import EasyDict as edict
 from os import path
+import debug as db
 
 __C = edict()
 cfg = __C
@@ -204,7 +205,7 @@ def parse_cfg(cfgfile):
         line = line.rstrip()
         if line == '' or line[0] == '#':
             line = fp.readline()
-            continue        
+            continue
         elif line[0] == '[':
             if block:
                 blocks.append(block)
@@ -317,7 +318,7 @@ def print_cfg(blocks):
             out_filters.append(prev_filters)
         elif block['type'] == 'split':
             splits = [int(sz) for sz in block['splits'].split(',')]
-            filters = splits[-1]            
+            filters = splits[-1]
             print(('%5d %-6s %3d -> {}' % (ind, 'split', prev_filters)).format(splits))
             prev_filters = filters
             out_widths.append(prev_width)
@@ -410,10 +411,15 @@ def print_cfg(blocks):
 
 def load_conv(buf, start, conv_model):
     num_w = conv_model.weight.numel()
+    num_b = 0
     if conv_model.bias is not None:
         num_b = conv_model.bias.numel()
-        conv_model.bias.data.copy_(torch.from_numpy(buf[start:start+num_b]));   start = start + num_b
-    conv_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_w])); start = start + num_w
+        conv_model.bias.data.copy_(torch.from_numpy(buf[start:start + num_b]))
+    start = start + num_b
+    conv_model.weight.data.copy_(torch.from_numpy(
+        buf[start:start + num_w]).view(conv_model.weight.data.shape))
+    start = start + num_w
+    #conv_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_w])); start = start + num_w
     return start
 
 def load_convfromcoco(buf, start, conv_model):
@@ -424,16 +430,16 @@ def load_convfromcoco(buf, start, conv_model):
     inds = np.concatenate([
         np.asarray([i for i in range(5)]),
         np.asarray(__C.vocids_in_coco) + 5]
-    ) 
+    )
     allinds = np.concatenate([inds + i * 85 for i in range(5)])
     if conv_model.bias is not None:
         num_b = tmpb.numel()
         tmpb.copy_(torch.from_numpy(buf[start:start+num_b])); start = start + num_b
-        conv_model.bias.data.copy_(tmpb[allinds]);   
+        conv_model.bias.data.copy_(tmpb[allinds]);
     tmpw.copy_(torch.from_numpy(buf[start:start+num_w])); start = start + num_w
     conv_model.weight.data.copy_(tmpw[allinds]);
     return start
-    
+
 
 def save_conv(fp, conv_model):
     if conv_model.weight.is_cuda:
@@ -448,13 +454,19 @@ def save_conv(fp, conv_model):
 def load_conv_bn(buf, start, conv_model, bn_model):
     num_w = conv_model.weight.numel()
     num_b = bn_model.bias.numel()
-    bn_model.bias.data.copy_(torch.from_numpy(buf[start:start+num_b]));     start = start + num_b
-    bn_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_b]));   start = start + num_b
-    bn_model.running_mean.copy_(torch.from_numpy(buf[start:start+num_b]));  start = start + num_b
-    bn_model.running_var.copy_(torch.from_numpy(buf[start:start+num_b]));   start = start + num_b
-    conv_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_w])); start = start + num_w 
+    bn_model.bias.data.copy_(torch.from_numpy(buf[start:start + num_b]))
+    start = start + num_b
+    bn_model.weight.data.copy_(torch.from_numpy(buf[start:start + num_b]))
+    start = start + num_b
+    bn_model.running_mean.copy_(torch.from_numpy(buf[start:start + num_b]))
+    start = start + num_b
+    bn_model.running_var.copy_(torch.from_numpy(buf[start:start + num_b]))
+    start = start + num_b
+    conv_model.weight.data.copy_(torch.from_numpy(
+        buf[start:start + num_w]).view(conv_model.weight.data.shape))
+    start = start + num_w
+    #conv_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_w])); start = start + num_w
     return start
-
 def save_conv_bn(fp, conv_model, bn_model):
     if bn_model.bias.is_cuda:
         convert2cpu(bn_model.bias.data).numpy().tofile(fp)
@@ -473,7 +485,7 @@ def load_fc(buf, start, fc_model):
     num_w = fc_model.weight.numel()
     num_b = fc_model.bias.numel()
     fc_model.bias.data.copy_(torch.from_numpy(buf[start:start+num_b]));     start = start + num_b
-    fc_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_w]));   start = start + num_w 
+    fc_model.weight.data.copy_(torch.from_numpy(buf[start:start+num_w]));   start = start + num_w
     return start
 
 def save_fc(fp, fc_model):

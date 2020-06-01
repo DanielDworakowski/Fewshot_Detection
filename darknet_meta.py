@@ -9,7 +9,9 @@ from dynamic_conv import dynamic_conv2d
 from pooling import GlobalMaxPool2d
 from pooling import GlobalAvgPool2d
 from pooling import Split
+import math
 import pdb
+import debug as db
 #from layers.batchnorm.bn import BN2d
 
 
@@ -67,12 +69,11 @@ class Reorg(nn.Module):
         assert(W % stride == 0)
         ws = stride
         hs = stride
-        x = x.view(B, C, H/hs, hs, W/ws, ws).transpose(3,4).contiguous()
-        x = x.view(B, C, H/hs*W/ws, hs*ws).transpose(2,3).contiguous()
-        x = x.view(B, C, hs*ws, H/hs, W/ws).transpose(1,2).contiguous()
-        x = x.view(B, hs*ws*C, H/hs, W/ws)
+        x = x.view(B, C, H//hs, hs, W//ws, ws).transpose(3,4).contiguous()
+        x = x.view(B, C, H//hs*W//ws, hs*ws).transpose(2,3).contiguous()
+        x = x.view(B, C, hs*ws, H//hs, W//ws).transpose(1,2).contiguous()
+        x = x.view(B, hs*ws*C, H//hs, W//ws)
         return x
-
 
 # for route and shortcut
 class EmptyModule(nn.Module):
@@ -84,6 +85,26 @@ class EmptyModule(nn.Module):
 
 # support route shortcut and reorg
 class Darknet(nn.Module):
+
+
+    def c2d_old(self, prev_filters, filters, kernel_size, stride, pad, groups, bias):
+        c2d = nn.Conv2d(prev_filters, filters, kernel_size, stride, int(pad), groups=groups, bias=False)
+        n = prev_filters
+        if not isinstance(kernel_size, tuple) and not isinstance(kernel_size, list):
+            kernel_size = (kernel_size, )
+        for k in kernel_size:
+            n *= k
+        stdv = 1. / math.sqrt(n)
+        c2d.weight.data.uniform_(-stdv, stdv)
+        if c2d.bias is not None:
+            c2d.bias.data.uniform_(-stdv, stdv)
+        return c2d
+
+    def bn2d(self, filters):
+        bn2d = nn.BatchNorm2d(filters)
+        bn2d.weight.data.uniform_()
+        return bn2d
+
     def __init__(self, darknet_file, learnet_file):
         super(Darknet, self).__init__()
         self.blocks = darknet_file if isinstance(darknet_file, list) else parse_cfg(darknet_file)
@@ -118,13 +139,13 @@ class Darknet(nn.Module):
             metax = torch.cat([metax, mask], dim=1)
 
         dynamic_weights = []
+        # db.printInfo(self.learnet_models)
         for model in self.learnet_models:
             metax = model(metax)
             if isinstance(metax, list):
                 dynamic_weights.append(metax[0])
                 metax = metax[-1]
         dynamic_weights.append(metax)
-
         return dynamic_weights
 
     def detect_forward(self, x, dynamic_weights):
@@ -193,7 +214,7 @@ class Darknet(nn.Module):
             else:
                 print('unknown type %s' % (block['type']))
         return x
-        
+
     def forward(self, x, metax, mask, ids=None):
         # pdb.set_trace()
         dynamic_weights = self.meta_forward(metax, mask)
@@ -233,7 +254,7 @@ class Darknet(nn.Module):
                     Conv2d = dynamic_conv2d(dynamic_count == 0, partial=partial)
                     dynamic_count += 1
                 else:
-                    Conv2d = nn.Conv2d
+                    Conv2d = self.c2d_old
                 if 'groups' in block:
                     groups = int(block['groups'])
 
@@ -241,15 +262,15 @@ class Darknet(nn.Module):
                 if batch_normalize:
                     model.add_module(
                         'conv{0}'.format(conv_id),
-                        Conv2d(prev_filters, filters, kernel_size, stride, pad, groups=groups, bias=False))
+                        Conv2d(prev_filters, filters, kernel_size, stride, int(pad), groups=groups, bias=False))
                     model.add_module(
                         'bn{0}'.format(conv_id),
-                        nn.BatchNorm2d(filters))
+                        self.bn2d(filters))
                     #model.add_module('bn{0}'.format(conv_id), BN2d(filters))
                 else:
                     model.add_module(
                         'conv{0}'.format(conv_id),
-                        Conv2d(prev_filters, filters, kernel_size, stride, pad, groups=groups, bias=bias))
+                        Conv2d(prev_filters, filters, kernel_size, stride, int(pad), groups=groups, bias=bias))
                 if activation == 'leaky':
                     model.add_module('leaky{0}'.format(conv_id), nn.LeakyReLU(0.1, inplace=True))
                 elif activation == 'relu':
@@ -307,8 +328,11 @@ class Darknet(nn.Module):
             elif block['type'] == 'connected':
                 filters = int(block['output'])
                 if block['activation'] == 'linear':
+                    db.printInfo('Linear needs to have an init weight function')
+                    exit(0)
                     model = nn.Linear(prev_filters, filters)
                 elif block['activation'] == 'leaky':
+
                     model = nn.Sequential(
                                nn.Linear(prev_filters, filters),
                                nn.LeakyReLU(0.1, inplace=True))
@@ -325,7 +349,7 @@ class Darknet(nn.Module):
                 loss.anchors = [float(i) for i in anchors]
                 loss.num_classes = int(block['classes'])
                 loss.num_anchors = int(block['num'])
-                loss.anchor_step = len(loss.anchors)/loss.num_anchors
+                loss.anchor_step = len(loss.anchors)//loss.num_anchors
                 loss.object_scale = float(block['object_scale'])
                 loss.noobject_scale = float(block['noobject_scale'])
                 loss.class_scale = float(block['class_scale'])
@@ -348,15 +372,15 @@ class Darknet(nn.Module):
                 models.append(model)
             else:
                 print('unknown type %s' % (block['type']))
-    
+
         # pdb.set_trace()
         return models
 
     def load_weights(self, weightfile):
         fp = open(weightfile, 'rb')
         header = np.fromfile(fp, count=4, dtype=np.int32)
-        self.header = torch.from_numpy(header)
         self.seen = self.header[3]
+        self.header = torch.from_numpy(header)
         buf = np.fromfile(fp, dtype = np.float32)
         fp.close()
 
@@ -372,12 +396,12 @@ class Darknet(nn.Module):
                 elif block['type'] == 'convolutional':
                     model = models[ind]
                     if self.is_dynamic(block) and model[0].weight is None:
-                        continue    
+                        continue
                     batch_normalize = int(block['batch_normalize'])
                     if batch_normalize:
                         start = load_conv_bn(buf, start, model[0], model[1])
                     else:
-                        
+
                         start = load_conv(buf, start, model[0])
                 elif block['type'] == 'connected':
                     model = models[ind]
@@ -492,16 +516,29 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     net = Darknet(args.darknet, args.learnet)
-    net = net.cuda()
+    net = net
 
-    x = Variable(torch.randn(8, 3, 416, 416))
-    metax = Variable(torch.randn(8, 3, 384, 384))
-    mask = Variable(torch.randn(8, 1, 96, 96))
-    x = x.cuda()
-    metax = metax.cuda()
-    mask = mask.cuda()
+    x = Variable(torch.ones(8, 3, 416, 416))
+    # metax = Variable(torch.randn(8, 3, 384, 384))
+    # mask = Variable(torch.randn(8, 1, 96, 96))
+    metax = Variable(torch.ones(8, 3, 384, 384))
+    mask = Variable(torch.ones(8, 1, 384, 384))
+
+
+    x = x
+    metax = metax
+    mask = mask
 
     y = net(x, metax, mask)
-    pdb.set_trace()
-    net.save_weights('/tmp/dynamic.weights')
-    print('hello')
+    # for name, param in net.named_parameters():
+    #     if param.requires_grad:
+    #         print(name)
+    #         print(param.mean())
+    #         print(param.var())
+
+    print(y)
+    print(y.mean())
+    print(y.var())
+    # pdb.set_trace()
+    # net.save_weights('/tmp/dynamic.weights')
+    # print('hello')

@@ -10,10 +10,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-import torch.backends.cudnn as cudnn
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 
+
+from tqdm import tqdm
 import dataset
 import random
 import math
@@ -22,6 +23,7 @@ from utils import *
 from cfg import parse_cfg, cfg
 from darknet_meta import Darknet
 from models.tiny_yolo import TinyYoloNet
+import debug as db
 import pdb
 
 # Training settings
@@ -39,7 +41,7 @@ cfg.config_data(data_options)
 cfg.config_meta(meta_options)
 cfg.config_net(net_options)
 
-# Parameters 
+# Parameters
 metadict      = data_options['meta']
 trainlist     = data_options['train']
 
@@ -91,14 +93,14 @@ model.print_network()
 ###################################################
 ### Meta-model parameters
 region_loss.seen  = model.seen
-processed_batches = 0 if cfg.tuning else model.seen/batch_size
+processed_batches = 0 if cfg.tuning else model.seen // batch_size
 trainlist         = dataset.build_dataset(data_options)
 nsamples          = len(trainlist)
 init_width        = model.width
 init_height       = model.height
-init_epoch        = 0 if cfg.tuning else model.seen/nsamples
-max_epochs        = max_batches*batch_size/nsamples+1
-max_epochs        = int(math.ceil(cfg.max_epoch*1./cfg.repeat)) if cfg.tuning else max_epochs 
+init_epoch        = 0 if cfg.tuning else model.seen // nsamples
+max_epochs        = max_batches * batch_size // nsamples + 1
+max_epochs        = int(math.ceil(cfg.max_epoch*1./cfg.repeat)) if cfg.tuning else max_epochs
 print(cfg.repeat, nsamples, max_batches, batch_size)
 print(num_workers)
 
@@ -138,6 +140,7 @@ if use_cuda:
     if ngpus > 1:
         model = torch.nn.DataParallel(model).cuda()
     else:
+        db.printInfo(torch.cuda.is_available())
         model = model.cuda()
 
 optimizer = optim.SGD(model.parameters(),
@@ -172,14 +175,15 @@ def train(epoch):
 
     train_loader = torch.utils.data.DataLoader(
         dataset.listDataset(trainlist, shape=(init_width, init_height),
-                       shuffle=False,
-                       transform=transforms.Compose([
-                           transforms.ToTensor(),
-                       ]), 
-                       train=True, 
-                       seen=cur_model.seen,
-                       batch_size=batch_size,
-                       num_workers=num_workers),
+                        shuffle=False,
+                        transform=transforms.Compose([
+                            transforms.ToTensor(),
+                            # lambda x: 2 * (x - 0.5)
+                        ]),
+                        train=True,
+                        seen=cur_model.seen,
+                        batch_size=batch_size,
+                        num_workers=num_workers),
         batch_size=batch_size, shuffle=False, **kwargs)
 
     metaset = dataset.MetaDataset(metafiles=metadict, train=True)
@@ -194,36 +198,42 @@ def train(epoch):
 
     lr = adjust_learning_rate(optimizer, processed_batches)
     logging('epoch %d/%d, processed %d samples, lr %f' % (epoch, max_epochs, epoch * len(train_loader.dataset), lr))
-
     model.train()
     t1 = time.time()
     avg_time = torch.zeros(9)
+    device = torch.device('cuda')
+
+    pbar = tqdm(dynamic_ncols=True, total=int(len(train_loader)))
     for batch_idx, (data, target) in enumerate(train_loader):
         metax, mask = metaloader.next()
+        db.printTensor(metax)
+        db.printTensor(data)
         t2 = time.time()
         adjust_learning_rate(optimizer, processed_batches)
         processed_batches = processed_batches + 1
-
-        if use_cuda:
-            data = data.cuda()
-            metax = metax.cuda()
-            mask = mask.cuda()
-            #target= target.cuda()
+        data = data.to(device, non_blocking=True)
+        metax = metax.to(device, non_blocking=True)
+        mask = mask.to(device, non_blocking=True)
         t3 = time.time()
-        data, target = Variable(data), Variable(target)
-        metax, mask = Variable(metax), Variable(mask)
         t4 = time.time()
         optimizer.zero_grad()
         t5 = time.time()
         output = model(data, metax, mask)
         t6 = time.time()
         region_loss.seen = region_loss.seen + data.data.size(0)
+        del data, metax, mask
         loss = region_loss(output, target)
+        del output, target
         t7 = time.time()
         loss.backward()
         t8 = time.time()
         optimizer.step()
         t9 = time.time()
+        status = '{} :: E: {} / {} :: iter: {} :: lr: {:.1e} :: L: {:.4f} '.format('train', epoch,
+                    max_epochs, region_loss.seen, lr, loss.item())
+        pbar.set_description(status, refresh=False)
+        pbar.update(1)
+        del loss
         if False and batch_idx > 1:
             avg_time[0] = avg_time[0] + (t2-t1)
             avg_time[1] = avg_time[1] + (t3-t2)
@@ -245,6 +255,7 @@ def train(epoch):
             print('            step : %f' % (avg_time[7]/(batch_idx)))
             print('           total : %f' % (avg_time[8]/(batch_idx)))
         t1 = time.time()
+    pbar.close()
     print('')
     t1 = time.time()
     logging('training with %f samples/s' % (len(train_loader.dataset)/(t1-t0)))
@@ -254,7 +265,7 @@ def train(epoch):
         cur_model.seen = (epoch + 1) * len(train_loader.dataset)
         cur_model.save_weights('%s/%06d.weights' % (backupdir, epoch+1))
 
-
+@torch.no_grad()
 def test(epoch):
     def truths_length(truths):
         for i in range(50):
@@ -280,9 +291,9 @@ def test(epoch):
             data = data.cuda()
             metax = metax.cuda()
             mask = mask.cuda()
-        data = Variable(data, volatile=True)
-        metax = Variable(metax, volatile=True)
-        mask = Variable(mask, volatile=True)
+        data = data
+        metax = metax
+        mask = mask
         output = model(data, metax, mask).data
         all_boxes = get_region_boxes(output, conf_thresh, num_classes, anchors, num_anchors)
         for i in range(output.size(0)):
@@ -290,9 +301,9 @@ def test(epoch):
             boxes = nms(boxes, nms_thresh)
             truths = target[i].view(-1, 5)
             num_gts = truths_length(truths)
-     
+
             total = total + num_gts
-    
+
             for i in range(len(boxes)):
                 if boxes[i][4] > conf_thresh:
                     proposals = proposals+1

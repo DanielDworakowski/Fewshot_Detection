@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from region_loss import RegionLoss
+# from region_loss import RegionLoss
 from cfg import *
 import pdb
 #from layers.batchnorm.bn import BN2d
@@ -133,7 +133,7 @@ class Darknet(nn.Module):
 
     def create_network(self, blocks):
         models = nn.ModuleList()
-    
+
         prev_filters = 3
         out_filters =[]
         conv_id = 0
@@ -241,7 +241,7 @@ class Darknet(nn.Module):
                 models.append(loss)
             else:
                 print('unknown type %s' % (block['type']))
-    
+
         return models
 
     def load_weights(self, weightfile):

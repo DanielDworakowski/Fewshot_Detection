@@ -240,19 +240,19 @@ def voc_eval(detpath,
     ap = voc_ap(rec, prec, use_07_metric)
 
     return rec, prec, ap
-    
+
 
 
 def _do_python_eval(res_prefix, novel=False, output_dir = 'output'):
     # _devkit_path = '/data2/bykang/pytorch-yolo2/VOCdevkit'
-    _devkit_path = '/tmp_scratch/basilisk/bykang/datasets/VOCdevkit'
+    _devkit_path = '/datasets/VOC/VOCdevkit'
     _year = '2007'
     _classes = ('__background__', # always index 0
         'aeroplane', 'bicycle', 'bird', 'boat',
         'bottle', 'bus', 'car', 'cat', 'chair',
         'cow', 'diningtable', 'dog', 'horse',
         'motorbike', 'person', 'pottedplant',
-        'sheep', 'sofa', 'train', 'tvmonitor') 
+        'sheep', 'sofa', 'train', 'tvmonitor')
     _novel_file = 'data/voc_novels.txt'
     novelid = get_id(res_prefix.split('/')[-3])
     print(novelid)
@@ -260,8 +260,8 @@ def _do_python_eval(res_prefix, novel=False, output_dir = 'output'):
 
     # _novel_classes = ('bird', 'bus', 'cow', 'motorbike', 'sofa')
 
-    #filename = '/data/hongji/darknet/results/comp4_det_test_{:s}.txt' 
-    filename = res_prefix + '{:s}.txt'
+    #filename = '/data/hongji/darknet/results/comp4_det_test_{:s}.txt'
+    filename = res_prefix + 'comp4_det_test_{:s}.txt'
     annopath = os.path.join(
         _devkit_path,
         'VOC' + _year,
@@ -285,7 +285,7 @@ def _do_python_eval(res_prefix, novel=False, output_dir = 'output'):
     for i, cls in enumerate(_classes):
         if cls == '__background__':
             continue
-        
+
         rec, prec, ap = voc_eval(
             filename, annopath, imagesetfile, cls, cachedir, ovthresh=0.5,
             use_07_metric=use_07_metric)
@@ -332,14 +332,12 @@ def _do_python_eval(res_prefix, novel=False, output_dir = 'output'):
 
 
 if __name__ == '__main__':
-    #res_prefix = '/data/hongji/darknet/project/voc/results/comp4_det_test_'  
+    #res_prefix = '/data/hongji/darknet/project/voc/results/comp4_det_test_'
     parser = argparse.ArgumentParser()
     parser.add_argument('res_prefix', type=str)
     parser.add_argument('--novel', action='store_true')
-    parser.add_argument('--single', action='store_true')  
+    parser.add_argument('--single', action='store_true')
     args = parser.parse_args()
     args.novel = True
     print(args.res_prefix)
     _do_python_eval(args.res_prefix, novel=args.novel, output_dir = 'output')
-
-

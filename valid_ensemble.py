@@ -8,8 +8,9 @@ from cfg import cfg
 from cfg import parse_cfg
 import os
 import pdb
+import tqdm
 
-
+@torch.no_grad()
 def valid(datacfg, darknetcfg, learnetcfg, weightfile, outfile, use_baserw=False):
     options = read_data_cfg(datacfg)
     valid_images = options['valid']
@@ -27,7 +28,7 @@ def valid(datacfg, darknetcfg, learnetcfg, weightfile, outfile, use_baserw=False
     with open(valid_images) as fp:
         tmp_files = fp.readlines()
         valid_files = [item.rstrip() for item in tmp_files]
-    
+
     m = Darknet(darknetcfg, learnetcfg)
     m.print_network()
     m.load_weights(weightfile)
@@ -44,7 +45,7 @@ def valid(datacfg, darknetcfg, learnetcfg, weightfile, outfile, use_baserw=False
 
     kwargs = {'num_workers': 4, 'pin_memory': True}
     valid_loader = torch.utils.data.DataLoader(
-        valid_dataset, batch_size=valid_batchsize, shuffle=False, **kwargs) 
+        valid_dataset, batch_size=valid_batchsize, shuffle=False, **kwargs)
 
 
     if False:
@@ -129,9 +130,9 @@ def valid(datacfg, darknetcfg, learnetcfg, weightfile, outfile, use_baserw=False
     for i, cls_name in enumerate(metaset.classes):
         buf = '%s/%s%s.txt' % (prefix, outfile, cls_name)
         fps[i] = open(buf, 'w')
-   
+
     lineId = -1
-    
+
     conf_thresh = 0.005
     nms_thresh = 0.45
     for batch_idx, (data, target) in enumerate(valid_loader):
@@ -171,7 +172,7 @@ def valid(datacfg, darknetcfg, learnetcfg, weightfile, outfile, use_baserw=False
                     y2 = (box[1] + box[3]/2.0) * height
 
                     det_conf = box[4]
-                    for j in range((len(box)-5)/2):
+                    for j in range((len(box)-5)//2):
                         cls_conf = box[5+2*j]
                         cls_id = box[6+2*j]
                         prob =det_conf * cls_conf

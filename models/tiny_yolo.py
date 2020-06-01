@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from collections import OrderedDict
 from cfg import *
 from darknet import MaxPoolStride1
-from region_loss import RegionLoss
+# from region_loss import RegionLoss
 
 class TinyYoloNet(nn.Module):
     def __init__(self):
@@ -80,14 +80,14 @@ class TinyYoloNet(nn.Module):
         #buf = np.fromfile('tiny-yolo-voc.weights', dtype = np.float32)
         buf = np.fromfile(path, dtype = np.float32)
         start = 4
-        
+
         start = load_conv_bn(buf, start, self.cnn[0], self.cnn[1])
         start = load_conv_bn(buf, start, self.cnn[4], self.cnn[5])
         start = load_conv_bn(buf, start, self.cnn[8], self.cnn[9])
         start = load_conv_bn(buf, start, self.cnn[12], self.cnn[13])
         start = load_conv_bn(buf, start, self.cnn[16], self.cnn[17])
         start = load_conv_bn(buf, start, self.cnn[20], self.cnn[21])
-        
+
         start = load_conv_bn(buf, start, self.cnn[24], self.cnn[25])
         start = load_conv_bn(buf, start, self.cnn[27], self.cnn[28])
         start = load_conv(buf, start, self.cnn[30])
@@ -95,12 +95,12 @@ class TinyYoloNet(nn.Module):
 if __name__ == '__main__':
     from PIL import Image
     from utils import *
-    m = TinyYoloNet() 
+    m = TinyYoloNet()
     m.float()
     m.eval()
     m.load_darknet_weights('tiny-yolo-voc.weights')
     print(m)
-    
+
     use_cuda = 1
     if use_cuda:
         m.cuda()
@@ -110,5 +110,4 @@ if __name__ == '__main__':
     boxes = do_detect(m, sized, 0.5, 0.4, use_cuda)
 
     class_names = load_class_names('data/voc.names')
-    plot_boxes(img, boxes, 'predict1.jpg', class_names)  
-
+    plot_boxes(img, boxes, 'predict1.jpg', class_names)
